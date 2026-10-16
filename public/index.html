@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#16191f">
+    <meta name="description" content="参考网易 UU 远程 TV 版的 Web 主控端，连接电脑、接收远程串流并使用键鼠操控。">
+    <title>UU远程 · Web 主控端</title>
+    <link rel="icon" href="/assets/ic_tv_about_logo.png">
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"></div>
+    <div class="app-shell">
+      <header class="header">
+        <a class="brand" href="/" aria-label="网易 UU 远程首页"><img src="/assets/tv_logo_white.png" alt="网易UU远程"><span class="web-label">WEB</span></a>
+        <nav class="header-actions" aria-label="主导航">
+          <button class="nav-button" data-action="devices"><i data-icon="monitor"></i><span>切换设备</span></button>
+          <button class="nav-button" data-action="refresh"><i data-icon="refresh"></i><span>刷新</span></button>
+          <button class="nav-button" data-action="feedback"><i data-icon="message"></i><span>反馈</span></button>
+          <button class="nav-button account-button" data-action="account"><i data-icon="user"></i><span id="account-label">登录账号</span><i class="small" data-icon="chevron"></i></button>
+        </nav>
+      </header>
+
+      <main id="home">
+        <section class="device-heading entrance">
+          <div class="device-heading-main"><span class="status-tag" id="device-status"><span class="status-dot"></span>未连接</span><h1 id="device-name">我的电脑</h1><span class="os-tag" id="device-os">Windows</span></div>
+          <div class="device-heading-detail"><span id="device-detail">登录账号，连接你的远程电脑</span><button class="text-button" data-action="devices">管理设备<i data-icon="arrow"></i></button></div>
+        </section>
+
+        <section class="workspace entrance" aria-label="远程工作台">
+          <div class="desktop-column">
+            <button class="desktop-preview" id="desktop-preview" data-action="connect" aria-label="连接电脑桌面">
+              <img class="desktop-wallpaper" id="desktop-wallpaper" src="/assets/wallpaper_default.webp" alt="电脑桌面预览">
+              <span class="preview-top"><span class="preview-badge"><span class="status-dot"></span><span id="preview-status">等待连接</span></span><span class="preview-expand"><i data-icon="expand"></i></span></span>
+              <span class="preview-prompt" id="preview-prompt"><span class="monitor-circle"><i data-icon="monitor"></i></span><strong>电脑桌面，随时连接</strong><span>使用同一账号，连接已登录的电脑</span></span>
+              <span class="desktop-entry"><span id="desktop-entry-label">登录并连接电脑</span><span class="entry-arrow"><i data-icon="arrow"></i></span></span>
+            </button>
+            <div class="desktop-caption"><span><i data-icon="shield"></i>端到端加密传输</span><span id="desktop-caption-right">支持鼠标与键盘操作</span></div>
+          </div>
+
+          <section class="quick-panel" aria-labelledby="quick-title">
+            <div class="section-heading"><h2 id="quick-title">快速启动</h2><button class="text-button subtle" data-action="all-apps">查看全部<i data-icon="chevron"></i></button></div>
+            <div class="app-grid" id="app-grid"></div>
+            <p class="quick-note" id="quick-note"><i data-icon="link"></i>连接电脑后，同步已安装的应用</p>
+          </section>
+        </section>
+
+        <section class="connection-settings entrance" aria-label="串流设置">
+          <div class="settings-label"><i data-icon="sliders"></i><span>连接偏好</span></div>
+          <button class="setting-inline" data-action="settings"><span>画面</span><strong id="quality-label">1080P 高清</strong><i data-icon="chevron"></i></button>
+          <button class="setting-inline" data-action="settings"><span>帧率</span><strong id="fps-label">60 FPS</strong><i data-icon="chevron"></i></button>
+          <div class="setting-static"><span>视频编码</span><strong>H.264</strong></div>
+          <button class="text-button setting-more" data-action="settings">更多设置<i data-icon="arrow"></i></button>
+        </section>
+
+        <section class="guide-strip entrance">
+          <div class="guide-illustration"><img src="/assets/ic_tv_gamepad.png" alt="游戏手柄"></div>
+          <div class="guide-copy"><span class="eyebrow">INPUT & CONTROL</span><h2>连接手柄与键鼠</h2><p>查看键鼠操作说明，检测已连接的手柄。</p></div>
+          <button class="outline-button" data-action="guide">操作指南<i data-icon="arrow"></i></button>
+          <span class="guide-decoration" aria-hidden="true">+</span>
+        </section>
+      </main>
+
+      <footer class="footer"><span class="footer-version"><span class="status-dot"></span>Web 主控端<span class="footer-divider">/</span><span>参考 TV 3.5.0</span></span><div class="keyboard-hints"><span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 选择</span><span><kbd>Enter</kbd> 确认</span><span><kbd>Esc</kbd> 返回</span></div><button class="text-button subtle" data-action="about">关于 UU远程<i data-icon="external"></i></button></footer>
+    </div>
+
+    <dialog id="modal" class="modal"><div id="modal-content"></div></dialog>
+    <section id="remote-session" class="remote-session" hidden aria-label="远程桌面">
+      <div class="remote-topbar"><img src="/assets/ic_tv_about_logo.png" alt="UU"><strong id="remote-device-name">远程桌面</strong><span class="remote-connection" id="remote-connection">正在连接</span><span class="remote-top-spacer"></span><button class="icon-button" id="remote-mute" data-action="mute" aria-label="静音"><i data-icon="volume"></i></button><button class="icon-button" data-action="fullscreen" aria-label="全屏"><i data-icon="expand"></i></button><button class="disconnect-button" data-action="disconnect"><i data-icon="exit"></i>断开连接</button></div>
+      <div id="remote-surface" class="remote-surface" tabindex="0" aria-label="远程画面，点击后使用键鼠操作">
+        <video id="remote-video" autoplay playsinline></video>
+        <div class="remote-loading" id="remote-loading"><span class="spinner"></span><h2 id="connection-stage">正在连接电脑</h2><p id="connection-explanation">正在协商安全的远程连接</p><button class="outline-button" id="retry-connection" data-action="retry" hidden>重新连接</button></div>
+      </div>
+      <div class="remote-toolbar"><button class="text-button" data-action="remote-settings"><i data-icon="sliders"></i>帧率与画面</button><button class="text-button" data-action="keyboard"><i data-icon="keyboard"></i>键盘</button><button class="text-button" data-action="gamepad"><i data-icon="gamepad"></i>手柄</button><div class="toolbar-spacer"></div><span id="remote-stats">等待串流数据</span><button class="text-button" data-action="diagnostics"><i data-icon="activity"></i>连接详情</button></div>
+      <div id="virtual-keyboard" class="virtual-keyboard" hidden></div>
+    </section>
+    <div id="toast" role="status" aria-live="polite" class="toast"></div>
+  </body>
+</html>

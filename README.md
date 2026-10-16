@@ -1,0 +1,76 @@
+# UU远程 Web 主控端
+
+参考 `ref/UURemote-tvProduction-3.5.0-30500-2b0f97d4-TV_gwqd.apk` 实现的 Web 客户端。连接目标为**原版网易 UU 远程电脑端**。本项目只包含主控端与本地 API／信令转接服务，不包含被控端、屏幕采集程序或后台控制代理。
+
+## 运行
+
+需要 Node.js 22.8+，推荐 Node.js 24，以及 Chrome／Edge。将参考 APK 保留在 `ref/` 下。
+
+```sh
+npm install
+npm run dev
+```
+
+打开 **http://127.0.0.1:5173**，点击“登录账号 → 生成登录二维码”，使用手机上的官方 UU 远程 App 扫码确认。在原版电脑端登录同一账号，再刷新并选择在线电脑。
+
+也可使用自己已有的登录令牌。令牌经官方 `/api/v1/user/info` 验证，仅存放于本地 Node 服务的当前内存会话中；不写入磁盘或浏览器存储。重启服务需要重新登录。
+
+## 实现与验证范围
+
+| 功能 | 状态 |
+| --- | --- |
+| TV 风格首页、APK 品牌与壁纸、手机适配、方向键导航 | 已实现，浏览器检查通过 |
+| 原版请求签名、正式 API 请求、主控设备初始化 | 已实现，正式服务实测通过 |
+| 官方登录二维码获取与生成 | 已实现，正式服务实测通过 |
+| 扫码状态轮询、确认登录、账号设备与应用列表 | 已实现；用户已扫码登录并选择在线电脑 |
+| 原版 Socket.IO 信令、房间／控制权／SDP／ICE | 真实电脑连接成功；用户确认已显示原版电脑桌面 |
+| 浏览器 WebRTC 音视频接收、H.264 解码、统计、全屏与静音 | 原版电脑画面已实测显示；音频与各项统计数值需进一步实测 |
+| 控制数据通道、键盘、鼠标、滚轮、退出时释放输入 | 已实现；真实 DataChannel 回环与协议测试通过，原版输入语义需真实电脑验证 |
+| 应用远程启动 Protobuf 消息 | 已实现编码与发送；需真实电脑验证 |
+| 手柄 | 已实现浏览器检测；未实现原版手柄输入协议 |
+
+**原版电脑连接与桌面画面已通过真实设备验证，完整功能兼容仍待继续验证。** 本次联调修正了控制请求二进制附件缺少 `0x04` 前缀、ICE 候选对象读取和发送层级错误，用户随后确认已显示电脑桌面。音频、原版键鼠操作、应用启动及跨网络稳定性尚未获得真实设备确认。连接详情记录入站信令的类型与字段名、控制权响应摘要、SDP／ICE 状态，并支持复制与导出；不记录账号令牌、完整 SDP 或候选地址。测试中的 WebRTC 对端只存在于测试脚本内，不是交付的被控端。页面不显示模拟设备，不伪造连接成功或延迟数据。
+
+## 架构
+
+```text
+浏览器主控界面
+  ├─ 本地 HTTP API → Node 签名与会话 → 网易正式 API
+  ├─ Socket.IO → 本地 WebSocket 转接 → 网易正式信令
+  └─ RTCPeerConnection ↔ 原版电脑端（直连或服务端返回的 TURN）
+       ├─ 音视频接收与浏览器解码
+       └─ CONTROL / TEXT / STREAMER / FILE / BINARY 数据通道
+```
+
+签名材料在启动时从本地参考 APK 的 DEX 中读取，不打包进浏览器代码。Node 转接服务用于设置浏览器 WebSocket 不允许自定义的 `X-NRD-AUTH` 请求头。媒体与输入通过 WebRTC 传输；Node 不采集屏幕，也不解码视频。
+
+- `public/lib/streamer.js`：串流主控组件，包含连接状态、SDP／ICE、媒体与数据通道、统计及资源释放。
+- `public/lib/protocol.js`：原版信令字段、ICE 适配、键码、画面坐标转换。
+- `public/lib/protobuf.js`：原版 ConnectOptions 与 Main.Message 的最小 Protobuf 编码。
+- `server/uu-api.mjs`：正式 API 请求签名与主控设备初始化。
+- `server/index.mjs`：本地会话、扫码登录、设备／应用／房间 API 和信令转接。
+- [协议分析记录](docs/protocol.md)：已确认字段、APK 来源位置与未验证部分。
+
+## 检查与构建
+
+```sh
+npm test
+npm run test:browser
+npm run build
+```
+
+单元测试覆盖签名、Protobuf、原版消息字段、输入坐标、连接取消与资源释放。浏览器测试使用本机无头 Chrome，检查桌面／手机界面、设置持久化、设备切换，并建立真实 WebRTC 视频与输入数据回环。运行浏览器测试前启动 `npm run dev`；可以使用 `CHROME_PATH` 指定浏览器、`PREVIEW_URL` 指定本地地址。
+
+构建输出为 `dist/`，包含网页及 Node 转接服务。它不是可以直接离线运行的纯静态站点。构建包不包含参考 APK；在构建目录中安装运行依赖，并设置 APK 的绝对路径：
+
+```powershell
+$env:UU_REFERENCE_APK = 'D:\workspace\UURemote-web\ref\UURemote-tvProduction-3.5.0-30500-2b0f97d4-TV_gwqd.apk'
+npm install --omit=dev
+npm start
+```
+
+`PORT` 可调整端口，`HOST` 默认为 `127.0.0.1`。HTTPS 页面需要相应的 HTTPS／WebSocket 反向代理配置。本项目未实现公网托管、多用户持久化或官方协议以外的设备兼容。
+
+## 参考资源
+
+图标、默认壁纸、引导插图来自用户提供的 APK。可用 Python 运行 `npm run inspect:apk` 重新提取；该脚本只使用 Python 标准库。品牌及资源归原权利人所有，本项目并非网易官方 Web 客户端。

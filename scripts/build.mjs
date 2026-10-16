@@ -1,0 +1,13 @@
+import { mkdir, cp, readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+const root = fileURLToPath(new URL('../', import.meta.url));
+const out = join(root, 'dist');
+await mkdir(out, { recursive: true });
+await cp(join(root, 'public'), join(out, 'public'), { recursive: true });
+await cp(join(root, 'server'), join(out, 'server'), { recursive: true });
+const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+await writeFile(join(out, 'package.json'), JSON.stringify({ ...pkg, scripts: { start: 'node server/index.mjs' }, devDependencies: undefined }, null, 2) + '\n');
+await cp(join(root, 'package-lock.json'), join(out, 'package-lock.json'));
+await writeFile(join(out, 'START.txt'), 'Run npm install --omit=dev, then npm start. Provide UU_REFERENCE_APK as an absolute path to the reference APK. This package is the controller only; it does not include a host agent.\n');
+console.log('Built dist/ (Web controller and local API/signaling bridge). Reference APK and account secrets are not included.');

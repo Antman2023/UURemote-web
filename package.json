@@ -1,0 +1,25 @@
+{
+  "name": "uuremote-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server/index.mjs",
+    "start": "node server/index.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test --test-isolation=none tests/*.test.mjs",
+    "test:browser": "node scripts/browser-check.mjs",
+    "inspect:apk": "python scripts/inspect_apk.py"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "socket.io-client": "^4.8.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1"
+  }
+}
