@@ -18,7 +18,7 @@ async function request(url, options = {}) {
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 401) { state.authenticated = false; state.devices = []; state.selected = null; state.apps = []; render(); }
-    throw new Error(data.error || `请求失败（${response.status}）`);
+    throw Object.assign(new Error(data.error || `请求失败（${response.status}）`), { retryAfter: data.retryAfter });
   }
   return data;
 }
@@ -49,6 +49,7 @@ function render() {
   const d = state.selected;
   const online = d && d.status !== 'offline';
   $('#account-label').textContent = state.authenticated ? (state.user?.nickname || '我的账号') : '登录账号';
+  $('.account-button').setAttribute('aria-label', state.authenticated ? '我的账号' : '登录账号');
   $('#device-name').textContent = d?.alias || (state.authenticated ? '选择一台电脑' : '我的电脑');
   $('#device-status').classList.toggle('online', !!online);
   $('#device-status').innerHTML = `<span class="status-dot"></span>${d ? online ? '在线' : '离线' : '未连接'}`;
@@ -89,7 +90,53 @@ async function loadApps() {
 }
 
 function openLogin() {
-  openModal('登录 UU远程', `<div class="login-body"><p class="login-subtitle">使用手机 UU远程 App 扫码<br>登录后即可连接账号下的电脑</p><div class="qr-container" id="qr-container"><div class="qr-placeholder"><i data-icon="qr"></i><button class="primary-button" data-action="generate-qr">生成登录二维码</button></div></div><p class="qr-description">手机与电脑，请使用同一账号</p><div class="login-status" id="login-status">在你的手机上确认登录</div><div class="login-alternate"><button class="text-button" data-action="token-login">使用已有登录令牌</button><a class="text-button subtle" href="https://uuyc.163.com/" target="_blank" rel="noreferrer">下载官方客户端<i data-icon="external"></i></a></div></div>`);
+  openModal('登录 UU远程', `<div class="login-body"><p class="login-subtitle">使用手机 UU远程 App 扫码<br>登录后即可连接账号下的电脑</p><div class="qr-container" id="qr-container"><div class="qr-placeholder"><i data-icon="qr"></i><button class="primary-button" data-action="generate-qr">生成登录二维码</button></div></div><p class="qr-description">手机与电脑，请使用同一账号</p><div class="login-status" id="login-status">在你的手机上确认登录</div><div class="login-alternate"><button class="text-button" data-action="sms-login">短信验证码登录</button><button class="text-button subtle" data-action="token-login">使用已有登录令牌</button><a class="text-button subtle" href="https://uuyc.163.com/" target="_blank" rel="noreferrer">下载官方客户端<i data-icon="external"></i></a></div></div>`);
+}
+function openSmsLogin() {
+  const controller = new AbortController(); let timer;
+  openModal('短信验证码登录', `<p class="modal-description">使用与电脑端相同的手机号登录 UU远程。</p><form id="sms-form"><div class="sms-phone-row"><label class="field"><span>区号</span><input name="countryCode" type="tel" inputmode="tel" autocomplete="tel-country-code" value="+86" pattern="[+]?[1-9][0-9]{0,3}" maxlength="5" required></label><label class="field"><span>手机号码</span><input name="mobile" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="请输入手机号码" maxlength="20" required></label></div><label class="field"><span>短信验证码</span><span class="sms-code-row"><input name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位验证码" pattern="[0-9]{6}" minlength="6" maxlength="6" required><button id="sms-send" type="button" class="secondary-button">获取验证码</button></span></label><p id="sms-status" class="field-hint" role="status" aria-live="polite"></p><p id="sms-error" class="error-text" role="alert"></p><div class="form-actions"><button type="button" class="secondary-button" data-action="account">返回扫码登录</button><button id="sms-submit" class="primary-button" type="submit">登录</button></div></form>`, { cleanup: () => { controller.abort(); clearInterval(timer); } });
+  const generation = state.loginGeneration;
+  const form = $('#sms-form'), send = $('#sms-send'), submit = $('#sms-submit');
+  const status = $('#sms-status'), errorText = $('#sms-error');
+  let sending = false, loggingIn = false;
+  const current = () => generation === state.loginGeneration && !controller.signal.aborted;
+  const credentials = () => Object.fromEntries(new FormData(form));
+  const update = () => {
+    const remaining = Math.max(0, Math.ceil(((state.smsRetryAt || 0) - Date.now()) / 1000));
+    send.disabled = sending || loggingIn || remaining > 0;
+    send.textContent = sending ? '正在发送…' : remaining ? `${remaining} 秒后重发` : '获取验证码';
+    submit.disabled = sending || loggingIn;
+    submit.textContent = loggingIn ? '正在登录…' : '登录';
+    for (const input of form.querySelectorAll('input')) input.readOnly = loggingIn || sending;
+  };
+  send.addEventListener('click', async () => {
+    if (send.disabled || !form.elements.countryCode.reportValidity() || !form.elements.mobile.reportValidity()) return;
+    sending = true; errorText.textContent = ''; status.textContent = ''; update();
+    try {
+      const { countryCode, mobile } = credentials();
+      const result = await request('/api/auth/sms/code', { method: 'POST', body: JSON.stringify({ countryCode, mobile }), signal: controller.signal });
+      state.smsRetryAt = Date.now() + (result.retryAfter || 60) * 1000;
+      if (!current()) return;
+      status.textContent = '验证码已发送，请查看手机短信。';
+      form.elements.code.focus();
+    } catch (error) {
+      if (!current()) return;
+      if (error.retryAfter) state.smsRetryAt = Date.now() + error.retryAfter * 1000;
+      errorText.textContent = error.message;
+    } finally { sending = false; if (current()) update(); }
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); if (sending || loggingIn) return;
+    loggingIn = true; errorText.textContent = ''; update();
+    try {
+      const result = await request('/api/auth/sms/login', { method: 'POST', body: JSON.stringify(credentials()), signal: controller.signal });
+      if (!current()) return;
+      form.reset(); state.authenticated = true; state.user = result.user; closeModal(); render();
+      await refreshDevices({ silent: true }); notify('登录成功，设备已同步');
+    } catch (error) { if (current()) errorText.textContent = error.message; }
+    finally { loggingIn = false; if (current()) update(); }
+  });
+  timer = setInterval(update, 250); update();
 }
 async function generateQr() {
   const generation = ++state.loginGeneration;
@@ -291,7 +338,7 @@ function toggleKeyboard() {
 const actions = {
   account: openAccount, devices: openDevices, refresh: () => refreshDevices(), feedback: openFeedback,
   settings: openSettings, 'remote-settings': openSettings, guide: () => openGuide(), about: openAbout,
-  'all-apps': openAllApps, 'close-modal': closeModal, 'generate-qr': generateQr, 'token-login': openTokenLogin,
+  'all-apps': openAllApps, 'close-modal': closeModal, 'generate-qr': generateQr, 'token-login': openTokenLogin, 'sms-login': openSmsLogin,
   'guide-tab': button => openGuide(button.dataset.tab), 'refresh-modal': async () => { await refreshDevices(); if (state.authenticated) openDevices(); },
   'select-device': async button => { state.selected = state.devices.find(d => d.device_id === button.dataset.id); sessionStorage.setItem('uu-device', state.selected.device_id); closeModal(); render(); await loadApps(); render(); },
   'toggle-settings-audio': button => button.setAttribute('aria-checked', String(button.getAttribute('aria-checked') !== 'true')),

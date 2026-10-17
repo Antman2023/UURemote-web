@@ -35,6 +35,8 @@ export class UuApi {
       body: method === 'GET' ? undefined : body,
       signal: signal ? AbortSignal.any([AbortSignal.timeout(timeout), signal]) : AbortSignal.timeout(timeout), redirect: 'error',
     });
+    // Native SMS requests also accept successful responses without a JSON body.
+    if (response.status === 204 || response.status === 205) return;
     const text = await response.text();
     let result;
     try { result = JSON.parse(text); } catch { throw new Error(`UU API 返回非 JSON 响应（HTTP ${response.status}）`); }

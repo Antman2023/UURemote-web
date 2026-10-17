@@ -15,6 +15,8 @@ HTTP 方法 + 路径（含原始查询串） + 排序后的小写 x-param 头串
 | 原版接口 | 方法 | 来源／用途 |
 | --- | --- | --- |
 | `/api/v1/device/android_tv/init` | POST | `cd.b`；注册主控身份 |
+| `/api/v1/security/mobile/code` | POST | `hb.b`；发送登录短信验证码 |
+| `/api/v1/login/by_mobile` | POST | `hb.e`；手机验证码登录 |
 | `/api/v1/qrcode/gen/login` | POST | `rb.f`；获取登录二维码 |
 | `/api/v1/qrcode/login/status` | POST | `hb.d`；等待扫码状态变化 |
 | `/api/v1/login/by_qrcode` | POST | `hb.g`；确认登录后获取账号令牌 |
@@ -24,6 +26,10 @@ HTTP 方法 + 路径（含原始查询串） + 排序后的小写 x-param 头串
 | `/api/v1/room/join/by_device/{id}` | POST | `gf.a`；请求体为 `{"force_join":false}` |
 
 二维码状态枚举来自 `QrCodeLoginStatus`：1 已生成、2 待确认、3 已取消、4 已确认。2026-10-16 的正式服务实测还在二维码响应中返回 `status_query_ticket`，实现会保留并回传，不打印这些令牌。
+
+短信发送请求体为 `{country_code: "86", mobile: "…", type: "login"}`；登录请求体为 `{country_code: "86", mobile: "…", code: "…"}`。`hb.b` 与 `hb.e` 按此构造 JSON。`fragment_auth_code.xml` 的 `CipherView` 设置 `cipher_num=6`；`AuthCodeFragment.f7204r=60` 为原版重发倒计时。`LoginResp` 返回 `user_id`、`nickname`、`token`，Web 服务仅将用户信息返回浏览器，令牌保留在内存会话中。`sb.g` 接受 HTTP 204/205 空响应，Web API 层也支持该行为。
+
+本地 `/api/auth/sms/code` 与 `/api/auth/sms/login` 接收 `countryCode`、`mobile`（登录时另有 `code`），由服务端转换为原版字段并签名。短信分支已通过模拟 API 的后端与浏览器测试，尚未验证真实号码的短信收取或额外风控响应。
 
 `DeviceDataJsonAdapter` 定义 `current_device`、`my_binded_devices`、`others_shared_devices`。当前 UI 接入自己的账号设备；共享设备的 `share_id` 模式尚未适配。
 

@@ -34,6 +34,50 @@ try {
   await page.getByRole('button',{name:'使用已有登录令牌'}).click();
   assert.equal(await page.locator('input[name=token]').getAttribute('type'),'password');
   await page.keyboard.press('Escape');
+
+  // SMS fixtures never send a real text message or use a real login code.
+  const smsSends=[],smsLogins=[];
+  await page.route('**/api/auth/sms/code',async route=>{
+    const body=route.request().postDataJSON();smsSends.push(body);
+    await route.fulfill(body.mobile==='123'?{status:400,json:{error:'请输入有效的手机号码'}}:{json:{retryAfter:60}});
+  });
+  await page.route('**/api/auth/sms/login',async route=>{
+    const body=route.request().postDataJSON();smsLogins.push(body);
+    await route.fulfill(body.code==='012345'?{json:{user:{user_id:'sms-test',nickname:'短信测试账号'}}}:{status:400,json:{error:'验证码错误，请重试'}});
+  });
+  await page.route('**/api/devices',route=>route.fulfill({json:{my_binded_devices:[],others_shared_devices:[]}}));
+  await page.getByRole('button',{name:'登录账号'}).click();
+  await page.getByRole('button',{name:'短信验证码登录',exact:true}).click();
+  await page.getByLabel('手机号码',{exact:true}).fill('123');
+  await page.getByRole('button',{name:'获取验证码',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#sms-error')?.textContent.includes('有效的手机号码'));
+  await page.getByLabel('手机号码',{exact:true}).fill('13800000000');
+  await page.screenshot({path:resolve(output,'sms-desktop.png')});
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.locator('#sms-form').evaluate(e=>e.scrollWidth>e.clientWidth),false);
+  await page.screenshot({path:resolve(output,'sms-mobile.png')});
+  await page.getByRole('button',{name:'获取验证码',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#sms-status')?.textContent.includes('已发送'));
+  assert.equal(await page.locator('#sms-send').isDisabled(),true);
+  assert.deepEqual(smsSends.at(-1),{countryCode:'+86',mobile:'13800000000'});
+  await page.getByPlaceholder('6 位验证码').fill('999999');
+  await page.getByRole('button',{name:'登录',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#sms-error')?.textContent.includes('验证码错误'));
+  assert.equal(await page.locator('#sms-submit').isEnabled(),true);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'登录账号'}).click();
+  await page.getByRole('button',{name:'短信验证码登录',exact:true}).click();
+  assert.equal(await page.locator('#sms-send').isDisabled(),true);
+  assert.equal(await page.getByLabel('手机号码',{exact:true}).inputValue(),'');
+  await page.getByLabel('手机号码',{exact:true}).fill('13800000000');
+  await page.getByPlaceholder('6 位验证码').fill('012345');
+  await page.getByRole('button',{name:'登录',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#account-label')?.textContent==='短信测试账号');
+  assert.deepEqual(smsLogins.at(-1),{countryCode:'+86',mobile:'13800000000',code:'012345'});
+  assert.equal(await page.locator('#modal').evaluate(e=>e.open),false);
+  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}).includes('13800000000')),false);
+  await page.unroute('**/api/auth/sms/code');await page.unroute('**/api/auth/sms/login');await page.unroute('**/api/devices');
+  await page.reload();await page.waitForFunction(()=>document.querySelector('#account-label')?.textContent==='登录账号');
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:resolve(output,'home-mobile.png'),fullPage:true});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
@@ -108,6 +152,7 @@ try {
   assert.equal(loopback.state,'connected');assert.equal(loopback.width,640);assert.ok(loopback.decoded>0);assert.deepEqual(loopback.input,{action:'kbd_press',key:87});
   assert.deepEqual(errors,[]);
   console.log('PASS: desktop/mobile layout, assets, settings persistence, dialogs, login form, device switching, offline handling.');
+  console.log('PASS: SMS desktop/mobile layout, invalid phone/code errors, resend cooldown across dialogs, login and device sync (mock API).');
   console.log('PASS: real browser WebRTC loopback:',JSON.stringify(loopback));
   console.log('Screenshots:',output);
 }finally{await browser.close();}

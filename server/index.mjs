@@ -7,6 +7,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 import { loadApkSigningKey } from './apk.mjs';
 import { UuApi } from './uu-api.mjs';
+import { sendSmsCode, loginBySms } from './sms-auth.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sessions = new Map();
@@ -61,7 +62,10 @@ const server = http.createServer(async (req, res) => {
       const path = url.pathname, method = req.method;
       if (path === '/api/status' && method === 'GET') return json(res, 200, { ready: !!api, error: apkError, authenticated: !!session.token, user: session.user, deviceId: session.deviceId });
       if (!api) throw new Error(`无法读取参考 APK：${apkError}`);
+      if (path === '/api/auth/sms/code' && method === 'POST') return json(res, 200, await sendSmsCode(api, session, await bodyOf(req)));
+      if (path === '/api/auth/sms/login' && method === 'POST') return json(res, 200, await loginBySms(api, session, await bodyOf(req), closeBridges));
       if (path === '/api/auth/qr' && method === 'POST') {
+        session.smsAttempt = undefined;
         await api.initialize(session);
         session.qr?.controller?.abort();
         const data = await api.request(session, 'POST', '/api/v1/qrcode/gen/login');
@@ -92,6 +96,7 @@ const server = http.createServer(async (req, res) => {
       if (path === '/api/auth/token' && method === 'POST') {
         const body = await bodyOf(req);
         if (typeof body.token !== 'string' || body.token.length < 10 || body.token.length > 8192) return json(res, 400, { error: '请输入有效的登录令牌' });
+        session.smsAttempt = undefined;
         await api.initialize(session);
         const candidate = { ...session, token: body.token };
         const user = await api.request(candidate, 'GET', '/api/v1/user/info');
@@ -101,6 +106,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { user });
       }
       if (path === '/api/auth/logout' && method === 'POST') {
+        session.smsAttempt = undefined;
         session.qr?.controller?.abort();
         closeBridges(session); session.token = undefined; session.user = undefined; session.userId = undefined; session.qr = undefined;
         return json(res, 200, { ok: true });
@@ -134,7 +140,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': mime[extname(filename)] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
     res.end(req.method === 'HEAD' ? undefined : await readFile(filename));
   } catch (error) {
-    if (!res.headersSent) json(res, error.status || (error.code === 'ENOENT' ? 404 : 502), { error: error.message, code: typeof error.code === 'number' ? error.code : undefined });
+    if (!res.headersSent) json(res, error.status || (error.code === 'ENOENT' ? 404 : 502), { error: error.message, code: typeof error.code === 'number' ? error.code : undefined, retryAfter: error.retryAfter });
     else res.end();
   }
 });
